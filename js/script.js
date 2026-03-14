@@ -9,7 +9,7 @@ const apiKeyInput = document.getElementById('apiKeyInput');
 const skipApiKeyBtn = document.getElementById('skipApiKeyBtn');
 const resetApiKeyBtn = document.getElementById('resetApiKeyBtn');
 
-const API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
+const API_URL = 'https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent';
 const MAX_RETRIES = 3;
 const INITIAL_DELAY = 1000;
 
@@ -154,6 +154,7 @@ async function generateRecipeWithRetry(prompt, apiKey) {
     let delay = INITIAL_DELAY;
     for (let i = 0; i < MAX_RETRIES; i++) {
         try {
+            console.log(`Attempting to call Gemini API (Attempt ${i+1})...`);
             const response = await fetch(`${API_URL}?key=${apiKey}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -161,17 +162,25 @@ async function generateRecipeWithRetry(prompt, apiKey) {
             });
 
             if (!response.ok) {
-                const errorData = await response.json();
+                const errorData = await response.json().catch(() => ({ error: { message: "Could not parse error response" } }));
                 const errorMessage = errorData.error ? errorData.error.message : `HTTP error! status: ${response.status}`;
                 
+                console.error("API Error Details:", errorData);
+
+                if (response.status === 404) {
+                    throw new Error("API Endpoint or Model not found (404). Please check the API configuration.");
+                }
+                
                 if (response.status === 401 || response.status === 403) {
-                    throw new Error(`Invalid API Key or Restricted Access: ${errorMessage}. Please check your API key and try again.`);
+                    throw new Error(`Invalid API Key or Restricted Access: ${errorMessage}.`);
                 }
                 
                 if (response.status === 503 || response.status === 429) {
                     if (i < MAX_RETRIES - 1) {
                         console.warn(`Attempt ${i+1} failed (status ${response.status}). Retrying...`);
-                        throw new Error(`RETRY_ME`); // Special signal for retry
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        delay *= 2;
+                        continue;
                     }
                 }
                 
@@ -186,9 +195,9 @@ async function generateRecipeWithRetry(prompt, apiKey) {
             }
         } catch (error) {
             if (i === MAX_RETRIES - 1) {
-                 throw new Error(`Failed to generate recipe. Please ensure your API key is correct.`);
+                 throw error;
             }
-            console.warn(`Attempt ${i+1} failed. Retrying...`);
+            console.warn(`Attempt ${i+1} failed: ${error.message}. Retrying...`);
             await new Promise(resolve => setTimeout(resolve, delay));
             delay *= 2;
         }
