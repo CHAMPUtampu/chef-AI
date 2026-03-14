@@ -109,11 +109,16 @@ function renderDemoRecipes() {
 form.addEventListener('submit', async (e) => {
     e.preventDefault();
     
-    const apiKey = localStorage.getItem('GEMINI_API_KEY');
+    const apiKeyRaw = localStorage.getItem('GEMINI_API_KEY');
+    const apiKey = apiKeyRaw ? apiKeyRaw.trim() : null;
+    
     if (!apiKey) {
         showApiKeyModal();
         return;
     }
+
+    // Debugging (Masked)
+    console.log(`Using API Key starting with: ${apiKey.substring(0, 6)}...`);
 
     const ingredients = document.getElementById('ingredients').value.trim();
     const cuisine = document.getElementById('cuisine').value;
