@@ -116,9 +116,14 @@
                 <input type="password" id="apiKeyInput" required
                     class="block w-full rounded-xl border-gray-300 shadow-sm p-4 text-center text-lg tracking-widest focus:ring-amber-500 focus:border-amber-500" 
                     placeholder="AIzaSy...">
-                <button type="submit" class="w-full bg-amber-600 text-white font-bold py-4 rounded-xl hover:bg-amber-700 transition-all shadow-lg">
-                    Save and Continue
-                </button>
+                <div class="grid grid-cols-2 gap-4 mt-6">
+                    <button type="button" id="skipApiKeyBtn" class="bg-gray-100 text-gray-600 font-bold py-4 rounded-xl hover:bg-gray-200 transition-all">
+                        Skip for now
+                    </button>
+                    <button type="submit" class="bg-amber-600 text-white font-bold py-4 rounded-xl hover:bg-amber-700 transition-all shadow-lg">
+                        Save Key
+                    </button>
+                </div>
             </form>
             
             <p class="text-xs text-center text-gray-400 mt-6">

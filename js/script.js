@@ -6,6 +6,7 @@ const errorDisplay = document.getElementById('errorDisplay');
 const apiKeyModal = document.getElementById('apiKeyModal');
 const apiKeyForm = document.getElementById('apiKeyForm');
 const apiKeyInput = document.getElementById('apiKeyInput');
+const skipApiKeyBtn = document.getElementById('skipApiKeyBtn');
 const resetApiKeyBtn = document.getElementById('resetApiKeyBtn');
 
 const API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
@@ -73,6 +74,10 @@ apiKeyForm.addEventListener('submit', (e) => {
         localStorage.setItem('GEMINI_API_KEY', key);
         hideApiKeyModal();
     }
+});
+
+skipApiKeyBtn.addEventListener('click', () => {
+    hideApiKeyModal();
 });
 
 resetApiKeyBtn.addEventListener('click', () => {
