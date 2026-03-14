@@ -9,8 +9,9 @@ const apiKeyInput = document.getElementById('apiKeyInput');
 const skipApiKeyBtn = document.getElementById('skipApiKeyBtn');
 const resetApiKeyBtn = document.getElementById('resetApiKeyBtn');
 
-const API_URL = 'https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent';
-const MAX_RETRIES = 3;
+// Using v1beta as it has the broadest support for gemini-1.5-flash across all regions
+const API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
+const MAX_RETRIES = 2;
 const INITIAL_DELAY = 1000;
 
 // Demo recipes data
@@ -87,6 +88,7 @@ resetApiKeyBtn.addEventListener('click', () => {
 
 function renderDemoRecipes() {
     const container = document.getElementById('demoContainer');
+    if (!container) return;
     container.innerHTML = '';
     demoRecipes.forEach(recipe => {
         const card = document.createElement('div');
@@ -154,51 +156,43 @@ async function generateRecipeWithRetry(prompt, apiKey) {
     let delay = INITIAL_DELAY;
     for (let i = 0; i < MAX_RETRIES; i++) {
         try {
-            console.log(`Attempting to call Gemini API (Attempt ${i+1})...`);
+            console.log(`Chef calling Gemini (v1beta/gemini-1.5-flash) - Attempt ${i+1}`);
             const response = await fetch(`${API_URL}?key=${apiKey}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
             });
 
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({ error: { message: "Could not parse error response" } }));
-                const errorMessage = errorData.error ? errorData.error.message : `HTTP error! status: ${response.status}`;
-                
-                console.error("API Error Details:", errorData);
+            const data = await response.json().catch(() => ({ error: { message: "Unknown response format" } }));
 
+            if (!response.ok) {
+                console.error("Gemini Error:", data);
+                const msg = data.error ? data.error.message : "Connection failed";
+                
                 if (response.status === 404) {
-                    throw new Error("API Endpoint or Model not found (404). Please check the API configuration.");
+                    throw new Error("Model not found (404). Your API key might not have access to 'gemini-1.5-flash' yet. Try creating a NEW key in Google AI Studio.");
+                }
+                if (response.status === 403) {
+                    throw new Error(`Access Denied (403): ${msg}. Ensure the 'Generative Language API' is enabled in your Google Cloud Project.`);
                 }
                 
-                if (response.status === 401 || response.status === 403) {
-                    throw new Error(`Invalid API Key or Restricted Access: ${errorMessage}.`);
+                if (i < MAX_RETRIES - 1 && (response.status === 503 || response.status === 429)) {
+                    await new Promise(r => setTimeout(r, delay));
+                    delay *= 2;
+                    continue;
                 }
-                
-                if (response.status === 503 || response.status === 429) {
-                    if (i < MAX_RETRIES - 1) {
-                        console.warn(`Attempt ${i+1} failed (status ${response.status}). Retrying...`);
-                        await new Promise(resolve => setTimeout(resolve, delay));
-                        delay *= 2;
-                        continue;
-                    }
-                }
-                
-                throw new Error(errorMessage);
+                throw new Error(msg);
             }
 
-            const data = await response.json();
-            if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts[0]) {
+            if (data.candidates && data.candidates[0]?.content?.parts?.[0]?.text) {
                 return data.candidates[0].content.parts[0].text;
             } else {
-                throw new Error("The AI didn't provide a recipe. Please try again with different ingredients.");
+                throw new Error("The AI returned an empty response. Please try different ingredients.");
             }
         } catch (error) {
-            if (i === MAX_RETRIES - 1) {
-                 throw error;
-            }
-            console.warn(`Attempt ${i+1} failed: ${error.message}. Retrying...`);
-            await new Promise(resolve => setTimeout(resolve, delay));
+            if (i === MAX_RETRIES - 1) throw error;
+            console.warn(`Retry due to: ${error.message}`);
+            await new Promise(r => setTimeout(r, delay));
             delay *= 2;
         }
     }
@@ -222,23 +216,25 @@ function showLoadingState() {
     recipeOutput.innerHTML = '';
     recipeOutput.classList.add('hidden');
     loaderContainer.classList.remove('hidden');
-    recipeOutput.scrollIntoView({ behavior: 'smooth' });
 }
 
 function displayRecipe(htmlContent) {
     loaderContainer.classList.add('hidden');
     recipeOutput.innerHTML = htmlContent;
     recipeOutput.classList.remove('hidden');
-    recipeOutput.scrollIntoView({ behavior: 'smooth' });
 }
 
 function displayError(message) {
     loaderContainer.classList.add('hidden');
     placeholder.classList.add('hidden');
     recipeOutput.classList.add('hidden');
-    errorDisplay.textContent = `❌ Error: ${message}`;
+    errorDisplay.innerHTML = `
+        <div class="space-y-2">
+            <p>❌ <strong>Error:</strong> ${message}</p>
+            <p class="text-xs text-gray-500 font-normal mt-4">Troubleshooting: Try a NEW API key from <a href="https://aistudio.google.com/app/apikey" target="_blank" class="underline text-amber-600">Google AI Studio</a>. Some old keys have restrictions.</p>
+        </div>
+    `;
     errorDisplay.classList.remove('hidden');
 }
 
-// Call init on load
 window.onload = init;
