@@ -72,6 +72,10 @@ apiKeyForm.addEventListener('submit', (e) => {
     e.preventDefault();
     const key = apiKeyInput.value.trim();
     if (key) {
+        if (key.startsWith('http')) {
+            alert("⚠️ Error: You pasted a website URL instead of an API Key. Please copy your key (starting with 'AIza...') from Google AI Studio.");
+            return;
+        }
         localStorage.setItem('GEMINI_API_KEY', key);
         hideApiKeyModal();
     }
