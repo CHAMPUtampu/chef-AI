@@ -161,11 +161,21 @@ async function generateRecipeWithRetry(prompt, apiKey) {
             });
 
             if (!response.ok) {
-                if (response.status === 503 || response.status === 429) {
-                    throw new Error(`Server overloaded (status ${response.status}). Retrying...`);
-                }
                 const errorData = await response.json();
-                throw new Error(errorData.error.message || `HTTP error! status: ${response.status}`);
+                const errorMessage = errorData.error ? errorData.error.message : `HTTP error! status: ${response.status}`;
+                
+                if (response.status === 401 || response.status === 403) {
+                    throw new Error(`Invalid API Key or Restricted Access: ${errorMessage}. Please check your API key and try again.`);
+                }
+                
+                if (response.status === 503 || response.status === 429) {
+                    if (i < MAX_RETRIES - 1) {
+                        console.warn(`Attempt ${i+1} failed (status ${response.status}). Retrying...`);
+                        throw new Error(`RETRY_ME`); // Special signal for retry
+                    }
+                }
+                
+                throw new Error(errorMessage);
             }
 
             const data = await response.json();
