@@ -9,7 +9,7 @@ const apiKeyInput = document.getElementById('apiKeyInput');
 const skipApiKeyBtn = document.getElementById('skipApiKeyBtn');
 const resetApiKeyBtn = document.getElementById('resetApiKeyBtn');
 
-const API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+const API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
 const MAX_RETRIES = 3;
 const INITIAL_DELAY = 1000;
 
@@ -179,7 +179,11 @@ async function generateRecipeWithRetry(prompt, apiKey) {
             }
 
             const data = await response.json();
-            return data.candidates[0].content.parts[0].text;
+            if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts[0]) {
+                return data.candidates[0].content.parts[0].text;
+            } else {
+                throw new Error("The AI didn't provide a recipe. Please try again with different ingredients.");
+            }
         } catch (error) {
             if (i === MAX_RETRIES - 1) {
                  throw new Error(`Failed to generate recipe. Please ensure your API key is correct.`);
