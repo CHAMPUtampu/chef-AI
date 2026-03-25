@@ -9,8 +9,9 @@ const apiKeyInput = document.getElementById('apiKeyInput');
 const skipApiKeyBtn = document.getElementById('skipApiKeyBtn');
 const resetApiKeyBtn = document.getElementById('resetApiKeyBtn');
 
-// Using v1beta as it has the broadest support for gemini-1.5-flash across all regions
-const API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
+// Model configuration — ordered by preference; falls back to next on 404
+const MODELS = ['gemini-2.0-flash', 'gemini-1.5-flash'];
+const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 const MAX_RETRIES = 2;
 const INITIAL_DELAY = 1000;
 
@@ -73,7 +74,11 @@ apiKeyForm.addEventListener('submit', (e) => {
     const key = apiKeyInput.value.trim();
     if (key) {
         if (key.startsWith('http')) {
-            alert("⚠️ Error: You pasted a website URL instead of an API Key. Please copy your key (starting with 'AIza...') from Google AI Studio.");
+            alert("You pasted a URL instead of an API key. Copy your key (starting with 'AIza...') from Google AI Studio.");
+            return;
+        }
+        if (!/^AIza[A-Za-z0-9_-]{30,}$/.test(key)) {
+            alert("That doesn't look like a valid Gemini API key. Keys start with 'AIza' and are about 39 characters long. Get one from Google AI Studio.");
             return;
         }
         localStorage.setItem('GEMINI_API_KEY', key);
@@ -121,8 +126,11 @@ form.addEventListener('submit', async (e) => {
         return;
     }
 
-    // Debugging (Masked)
-    console.log(`Using API Key starting with: ${apiKey.substring(0, 6)}...`);
+    if (!apiKey.match(/^AIza[A-Za-z0-9_-]{30,}$/)) {
+        displayError("Your saved API key looks invalid. Please reset it and enter a valid key from Google AI Studio.");
+        showApiKeyModal();
+        return;
+    }
 
     const ingredients = document.getElementById('ingredients').value.trim();
     const cuisine = document.getElementById('cuisine').value;
@@ -162,11 +170,28 @@ form.addEventListener('submit', async (e) => {
 });
 
 async function generateRecipeWithRetry(prompt, apiKey) {
+    // Try each model in order; only move to the next on a 404
+    for (const model of MODELS) {
+        try {
+            const result = await callGemini(prompt, apiKey, model);
+            return result;
+        } catch (error) {
+            if (error.status === 404 && model !== MODELS[MODELS.length - 1]) {
+                console.warn(`Model ${model} not found, trying next fallback...`);
+                continue;
+            }
+            throw error;
+        }
+    }
+}
+
+async function callGemini(prompt, apiKey, model) {
     let delay = INITIAL_DELAY;
     for (let i = 0; i < MAX_RETRIES; i++) {
         try {
-            console.log(`Chef calling Gemini (v1beta/gemini-1.5-flash) - Attempt ${i+1}`);
-            const response = await fetch(`${API_URL}?key=${apiKey}`, {
+            console.log(`Calling Gemini model: ${model} — attempt ${i + 1}`);
+            const url = `${API_BASE}/${model}:generateContent?key=${apiKey}`;
+            const response = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
@@ -177,14 +202,24 @@ async function generateRecipeWithRetry(prompt, apiKey) {
             if (!response.ok) {
                 console.error("Gemini Error:", data);
                 const msg = data.error ? data.error.message : "Connection failed";
-                
+
+                if (response.status === 400 && msg.toLowerCase().includes('api key')) {
+                    const err = new Error("Invalid API key. Please reset your key and enter a valid one from Google AI Studio.");
+                    err.status = 400;
+                    throw err;
+                }
                 if (response.status === 404) {
-                    throw new Error("Model not found (404). Your API key might not have access to 'gemini-1.5-flash' yet. Try creating a NEW key in Google AI Studio.");
+                    const err = new Error(`Model '${model}' not found.`);
+                    err.status = 404;
+                    throw err;
                 }
                 if (response.status === 403) {
-                    throw new Error(`Access Denied (403): ${msg}. Ensure the 'Generative Language API' is enabled in your Google Cloud Project.`);
+                    const err = new Error("Access denied. Ensure the 'Generative Language API' is enabled in your Google Cloud project.");
+                    err.status = 403;
+                    throw err;
                 }
-                
+
+                // Only retry on transient errors (429 rate-limit, 503 unavailable)
                 if (i < MAX_RETRIES - 1 && (response.status === 503 || response.status === 429)) {
                     await new Promise(r => setTimeout(r, delay));
                     delay *= 2;
@@ -199,6 +234,8 @@ async function generateRecipeWithRetry(prompt, apiKey) {
                 throw new Error("The AI returned an empty response. Please try different ingredients.");
             }
         } catch (error) {
+            // Don't retry non-transient errors
+            if (error.status === 400 || error.status === 403 || error.status === 404) throw error;
             if (i === MAX_RETRIES - 1) throw error;
             console.warn(`Retry due to: ${error.message}`);
             await new Promise(r => setTimeout(r, delay));
@@ -233,13 +270,19 @@ function displayRecipe(htmlContent) {
     recipeOutput.classList.remove('hidden');
 }
 
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
 function displayError(message) {
     loaderContainer.classList.add('hidden');
     placeholder.classList.add('hidden');
     recipeOutput.classList.add('hidden');
     errorDisplay.innerHTML = `
         <div class="space-y-2">
-            <p>❌ <strong>Error:</strong> ${message}</p>
+            <p>&#10060; <strong>Error:</strong> ${escapeHtml(message)}</p>
             <p class="text-xs text-gray-500 font-normal mt-4">Troubleshooting: Try a NEW API key from <a href="https://aistudio.google.com/app/apikey" target="_blank" class="underline text-amber-600">Google AI Studio</a>. Some old keys have restrictions.</p>
         </div>
     `;
